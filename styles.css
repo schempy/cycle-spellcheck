@@ -1,0 +1,29 @@
+html, body {
+  margin: 0;
+
+  height: 100%;
+
+  font-family: 'Arial'
+}
+
+.spellchecker {
+  height: 100%;
+}
+
+.misspellings {
+  width: 400px;
+  height: 200px;
+  border: 1px solid #ccc;
+}
+
+p {
+  margin: 20px 0 0 0;
+  padding: 0;
+}
+
+.highlight {
+  color: red;
+}
+
+
+
