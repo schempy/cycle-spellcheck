@@ -4,20 +4,14 @@ import {Observable} from 'rx';
 
 function getSentenceParts(misspelling, sentence) {
   if (misspelling.word) {
-    let keywordIndexEnd = sentence.indexOf(misspelling.word) + misspelling.word.length; 
-    let before = sentence.slice(0, sentence.indexOf(misspelling.word));
-    let after = sentence.slice(keywordIndexEnd);
-    let sentenceArray = [];
-
-    if (before.length > 0) {
-      sentenceArray.push(span(before));
-    }
-
-    sentenceArray.push(span('.highlight', misspelling.word));
-
-    if (after.length > 0) {
-      sentenceArray.push(span(after));
-    }
+    const keywordIndexEnd = sentence.indexOf(misspelling.word) + misspelling.word.length; 
+    const before = sentence.slice(0, sentence.indexOf(misspelling.word));
+    const after = sentence.slice(keywordIndexEnd);
+    const sentenceArray = [
+      ...before,
+      span('.highlight', misspelling.word),
+      ...after
+    ];
 
     return sentenceArray;    
   }
@@ -45,7 +39,7 @@ function intent(DOMSource) {
       {
         word: 'reallly',
         suggestions: [
-          'realy',
+          'really',
           'real'
         ]
       },
@@ -61,21 +55,27 @@ function intent(DOMSource) {
 
   const changeWordClick$ = DOMSource.select('.change-word').events('click')
     .startWith(0)
-    .map((ev, index) => {
-      return index;
-    });
+    .map((ev, index) => index);
 
   const suggestionSelect$ = DOMSource.select('.suggestions').events('change')
-    .map((ev) => {
-      return ev.target.value;
-    })
-    .startWith('');
-    
-  const changeWord$ = suggestionSelect$
-    .map((theWord) => {
-      return theWord;
-    })
+    .map(ev => ev.target);
 
+  const changeWordInput$ = DOMSource.select('.word').events('input')
+    .debounce(500)
+    .map(ev => ev.target);
+
+  const resetSuggestionSelect$ = changeWordClick$
+    .withLatestFrom(suggestionSelect$, (index, target) => {
+      return target;
+    });
+
+  const resetChangeWord$ = changeWordClick$
+    .map(index => ''); 
+
+  const changeWord$ = suggestionSelect$
+    .merge(changeWordInput$)
+    .map(target => target.value)
+    .startWith('');
 
   const misspellings$ = Observable.combineLatest(response$, changeWordClick$, (misspellings, index) => {
     if (index === 0) {
@@ -104,20 +104,13 @@ function intent(DOMSource) {
     }
   });
 
-  const word$ = misspellings$
-    .map((misspellings) => {
-      let newWord = '';
-
-      if (document.querySelector('.word')) {
-        newWord = document.querySelector('.word').value;
-      }
-
+  const word$ = changeWordClick$
+    .withLatestFrom(changeWord$, misspellings$, (index, changeWord, misspellings) => {
       return {
         oldWord: misspellings.prev.word,
-        newWord: newWord
+        newWord: changeWord
       };
     });
-
 
   const sentence$ = Observable.of('This reallly sucks but so dooo you')
     .merge(word$)
@@ -129,15 +122,28 @@ function intent(DOMSource) {
       return prev;
     });
 
-  return {sentence$, misspellings$, changeWord$};
+  const changeWordValue$ = changeWord$.merge(resetChangeWord$);
+
+  return {
+    sentence$,
+    misspellings$,
+    changeWordValue$,
+    resetSuggestionSelect$
+  };
 }
 
 function model(actions) {
-  return Observable.combineLatest(actions.sentence$, actions.misspellings$, actions.changeWord$, (sentence, misspellings, changeWord) => {
+  actions.resetSuggestionSelect$.subscribe(
+      target => {
+        target.selectedIndex = -1;
+      }
+  );
+
+  return Observable.combineLatest(actions.sentence$, actions.misspellings$, actions.changeWordValue$, (sentence, misspellings, value) => {
       const sentenceParts = getSentenceParts(misspellings.curr, sentence);
       const suggestions = getSuggestions(misspellings.curr.suggestions);
 
-      return {sentenceParts, suggestions, changeWord};
+      return {sentenceParts, suggestions, value};
     }
   );
 }
@@ -151,7 +157,7 @@ function view(state$) {
         ]),
         div([
           p('Change Word'),
-          input('.word', {type: 'text', value: `${state.changeWord}`})
+          input('.word', {type: 'text', value: `${state.value}`})
         ]),
         div([
           p('Suggestions'),
@@ -164,7 +170,6 @@ function view(state$) {
       ])
     );
 }
-
 
 function main (sources) {
   const actions = intent(sources.DOM);
