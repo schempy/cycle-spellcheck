@@ -73,8 +73,8 @@ function intent(DOMSource) {
       return prev + 1;
     });
 
-  const resetSuggestionSelect$ = ignoreWordClick$
-    .merge(changeWordClick$)
+  const resetSuggestionSelect$ = changeWordClick$
+    .merge(ignoreWordClick$)
     .withLatestFrom(suggestionSelect$, (click, target) => {
       return target;
     });
