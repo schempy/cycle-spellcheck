@@ -54,8 +54,10 @@ function intent(DOMSource) {
   );   
 
   const changeWordClick$ = DOMSource.select('.change-word').events('click')
-    .startWith(0)
     .map((ev, index) => index);
+
+  const ignoreWordClick$ = DOMSource.select('.ignore-word').events('click')
+    .map(ev => ev.target);
 
   const suggestionSelect$ = DOMSource.select('.suggestions').events('change')
     .map(ev => ev.target);
@@ -64,12 +66,21 @@ function intent(DOMSource) {
     .debounce(500)
     .map(ev => ev.target);
 
-  const resetSuggestionSelect$ = changeWordClick$
-    .withLatestFrom(suggestionSelect$, (index, target) => {
+  const misspellingIndex$ = changeWordClick$
+    .startWith(0)
+    .merge(ignoreWordClick$)
+    .scan((prev, curr) => {
+      return prev + 1;
+    });
+
+  const resetSuggestionSelect$ = ignoreWordClick$
+    .merge(changeWordClick$)
+    .withLatestFrom(suggestionSelect$, (click, target) => {
       return target;
     });
 
   const resetChangeWord$ = changeWordClick$
+    .merge(ignoreWordClick$)
     .map(index => ''); 
 
   const changeWord$ = suggestionSelect$
@@ -77,32 +88,36 @@ function intent(DOMSource) {
     .map(target => target.value)
     .startWith('');
 
-  const misspellings$ = Observable.combineLatest(response$, changeWordClick$, (misspellings, index) => {
-    if (index === 0) {
-      return {
-        curr: misspellings[index],
-        prev: misspellings[index]
-      };
+  const misspellings$ = Observable.combineLatest(
+      response$,
+      misspellingIndex$,
+      (misspellings, index) => {
+        if (index === 0) {
+          return {
+            curr: misspellings[index],
+            prev: misspellings[index]
+          };
 
-    } else if (index < misspellings.length) {
-      return {
-        curr: misspellings[index],
-        prev: misspellings[index-1]
-      };
+        } else if (index < misspellings.length) {
+          return {
+            curr: misspellings[index],
+            prev: misspellings[index-1]
+          };
 
-    } else if (index === misspellings.length) {
-      return {
-        curr: {},
-        prev: misspellings[index-1]
+        } else if (index === misspellings.length) {
+          return {
+            curr: {},
+            prev: misspellings[index-1]
+          }
+
+        } else {
+          return {
+            curr: '',
+            prev: ''
+          };
+        }
       }
-
-    } else {
-      return {
-        curr: '',
-        prev: ''
-      };
-    }
-  });
+  );
 
   const word$ = changeWordClick$
     .withLatestFrom(changeWord$, misspellings$, (index, changeWord, misspellings) => {
@@ -139,12 +154,16 @@ function model(actions) {
       }
   );
 
-  return Observable.combineLatest(actions.sentence$, actions.misspellings$, actions.changeWordValue$, (sentence, misspellings, value) => {
-      const sentenceParts = getSentenceParts(misspellings.curr, sentence);
-      const suggestions = getSuggestions(misspellings.curr.suggestions);
+  return Observable.combineLatest(
+      actions.sentence$,
+      actions.misspellings$,
+      actions.changeWordValue$,
+      (sentence, misspellings, value) => {
+        const sentenceParts = getSentenceParts(misspellings.curr, sentence);
+        const suggestions = getSuggestions(misspellings.curr.suggestions);
 
-      return {sentenceParts, suggestions, value};
-    }
+        return {sentenceParts, suggestions, value};
+      }
   );
 }
 
@@ -165,7 +184,7 @@ function view(state$) {
         ]),
         div([
           button('.change-word', 'Change'),
-          button('.ignore', 'Ignore')
+          button('.ignore-word', 'Ignore')
         ])
       ])
     );
